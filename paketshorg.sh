@@ -42,7 +42,7 @@ echo "$po_content" | msgfmt -o /usr/share/locale/es/LC_MESSAGES/paketshorg.mo -
 
 # Nombre del archivo de la descarga
 p_html="$(dirname $0)/paketshorg.html"
-echo "HTML $p_html"
+# echo "HTML $p_html"
 
 # wget --debug \
 headers="$(wget --server-response \
@@ -83,7 +83,7 @@ wget \
 # Search string
 search="$(cat "$p_html" | grep -oP '(?<=badge badge-pill text-bg-danger">)[^<]+')"
 data_keys="$(grep -oP 'data-key="\K[^"]+' "$p_html" | tr -d '\n')"
-echo "Data_keys: $data_keys"
+# echo "Data_keys: $data_keys"
 
 if [ -z "$search" ]; then
     echo "Abriendo HTML"
@@ -109,9 +109,9 @@ done
 
 # Mostrar elegidos
 token3="$var3=$keys"
-echo "$elegidos_texto"
-echo "Keys: $keys"
-echo "Token3: $token3"
+# echo "$elegidos_texto"
+# echo "Keys: $keys"
+# echo "Token3: $token3"
 wget \
 	--header='user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.63 Safari/537.36' \
 	--header="cookie: $token1; $token2; $token3; consent_notice_agree=true; distro_id=151" \
@@ -119,5 +119,91 @@ wget \
 	-O "$p_html" \
 	"https://pkgs.org/search/?q=$so_file" 2>/dev/null
 
-echo "Abriendo HTML"
-xdg-open "$p_html"
+accordion="$(
+    cat "$p_html" 2>&1 | grep -Ev "</?header" | grep -Ev "</?nav|section|footer" \
+    | xmllint --html --xpath '//*[@id="tab-files-accordion"]' - 2>/dev/null
+)"
+
+card_exists=0
+IFS=$'\n' read -rd '' -a lines <<<"$accordion"
+for line in "${lines[@]}"; do
+    if echo "$line" | grep -q '<div class="card"'; then
+		card_exists=1
+        text_cards+=("$(printf "%s\n" "${card[@]}")")
+        card=()
+    fi
+    if [[ "$card_exists" == 1 ]];then
+		card+=("$line")
+    fi
+done
+text_cards+=("$(printf "%s\n" "${card[@]}")")
+cards=()
+
+echo -e "\n Hay ${#text_cards[@]} sistemas Linux."
+for card in "${text_cards[@]}"; do
+    # echo "$card"
+    # echo ""
+
+	# Convertir contenido HTML a un array de líneas
+	IFS=$'\n' read -rd '' -a lines <<<"$card"
+
+	# Variables temporales para almacenar datos de la arquitectura actual
+	current_sistema=""
+	current_version=""
+	current_arch=""
+	current_official=""
+	current_target=""
+	packages=()
+
+	# Iterar sobre cada línea del contenido HTML
+	for line in "${lines[@]}"; do
+		if [[ $line =~ class=\"card-header\ distro-([^\"]+)\" ]]; then
+			current_sistema=${BASH_REMATCH[1]}
+			current_target=$(echo "$line" | grep -oP 'data-bs-target="#tab-files-distro-\K[^"]+')
+		elif [[ $line =~ \<a\ class=\"card-title\"\ href=\"#\"\>([^\<]+)\<\/a\> ]]; then
+			current_version=${BASH_REMATCH[1]}
+		elif [[ $line =~ class=\"fw-bold\ ps-3\" ]]; then
+			if [[ -n $current_arch ]]; then
+				# Imprimir la información de la arquitectura anterior
+				echo -e "|\n+_ Version:"
+				echo "'$current_sistema' > '$current_version' > '$current_arch'"
+				echo "  $current_target $current_official"
+				for package in "${packages[@]}"; do
+					echo ""
+					echo "  ${package_urls[$package]}"
+					echo "  '${package_descriptions[$package]}'"
+					echo "    $package"
+				done
+			fi
+			# Reiniciar variables para la nueva arquitectura
+			current_arch="$(echo "$line" | awk -F'class="fw-bold ps-3" colspan="2">' '{print $2}' | sed -E 's/[[:space:]]+$//g')"
+			current_official=""
+			packages=()
+			declare -A package_urls
+			declare -A package_descriptions
+		elif [[ $line =~ \<span\ class=\"badge\ badge-pill\ text-bg-success\ align-top\ d-none\ d-md-inline-block\ ms-2\"\>([^\<]+)\<\/span\> ]]; then
+			current_official=${BASH_REMATCH[1]}
+		elif [[ $line =~ href=\"([^\"]+)\" ]]; then
+			href=${BASH_REMATCH[1]}
+			innerHTML=$(echo "$line" | awk -F'<a href="[^"]+">' '{print $2}' | awk -F'</a>' '{print $1}')
+			packages+=("$innerHTML")
+			package_urls["$innerHTML"]="$href"
+		elif [[ $line =~ class=\"d-none\ d-md-table-cell\" ]]; then
+			description=$(echo "$line" | awk -F'class="d-none d-md-table-cell">' '{print $2}' | awk -F'</td>' '{print $1}')
+			package_descriptions["$innerHTML"]="$description"
+		fi
+	done
+
+	# Manejar la última arquitectura
+	if [[ -n $current_arch ]]; then
+		echo -e "|\n+_ Version:"
+		echo "'$current_sistema' > '$current_version' > '$current_arch'"
+		echo "  $current_target $current_official"
+		for package in "${packages[@]}"; do
+			echo ""
+			echo "  ${package_urls[$package]}"
+			echo "  '${package_descriptions[$package]}'"
+			echo "    $package"
+		done
+	fi
+done
