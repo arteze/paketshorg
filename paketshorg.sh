@@ -126,7 +126,7 @@ fi
 # Mostrar la cadena traducida
 echo "$(gettext Search): $(gettext $search)"
 
-# Mostrar imágenes y seleccionar el captcha
+# Mostrar y seleccionar las fotos
 elegidos_texto="$($(dirname $0)/paketshorg.py "$p_html" "$search ($(gettext $search))")"
 elegidos="$( echo "$elegidos_texto" | sed "s/.* //g" )"
 # echo "Elegidos: $elegidos"
@@ -231,8 +231,7 @@ ocard_filtered="$ocard"
 for ((i=1; i<$#; i++)); do
 	if [[ ! "${!i}" =~ ^-i[0-9_]+$ ]]; then
 		ocard_filtered="$(echo -n "$ocard_filtered" | grep -i "${!i}" )"
-		color_aleatorio="$(obtener_color_aleatorio)"
-		# echo -e "$random_color -- ${!i} --
+		# echo -e "$(random_color) -- ${!i} --
 # $ocard_filtered
 # \e[0m"
 	fi
@@ -250,4 +249,17 @@ for arg in "$@"; do
 	fi
 done
 
-echo "$line"
+if ! echo -e "$line" | grep -E -q "^https?://.*" ;then
+	echo "Resultado: $line"
+	exit
+fi
+
+url_pkg="$line"
+
+wget --content-on-error \
+	-O "$p_html" \
+	--header='user-agent: $user_agent' \
+	--header="cookie: $token1; $token2; $token3; consent_notice_agree=true; distro_id=151" \
+	"$url_pkg" 2>/dev/null
+
+xdg-open "$p_html"
