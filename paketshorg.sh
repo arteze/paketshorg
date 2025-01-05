@@ -1,13 +1,32 @@
 #!/bin/sh
 
 # Verificar si se pasó un parámetro
-if [ "$#" -ne 1 ]; then
-    echo "Uso: $0 <nombre_del_archivo.so>"
+if [ $# -lt 1 ]; then
+    echo "Uso: $0 filtro1 filtro2 ... archivo.so (archivo a buscar)"
+    echo "Ejemplo: $0 cooker lib64 x86_64 libXext.so.6"
     exit 1
 fi
 
-# Asignar el parámetro a una variable
-so_file="$1"
+function show_sys(){
+	# Mostrar el sistema
+	# sys version arch target official pkgs urls descs
+	if [[ -n $arch ]]; then
+		echo -e "
++_ Version:
+'$sys' > '$version' > '$arch'
+$target $official"
+		for pkg in "${pkgs[@]}"; do
+			echo -e "
+${urls[$pkg]}
+'${descs[$pkg]}'
+$pkg"
+		done
+	fi
+}
+
+# Obtener el último elemento del array
+file_search="${@:-1}"
+# echo "$file_search"
 
 export TEXTDOMAIN="$(basename "$0" | sed 's/\.[^.]*$//')"
 # echo "$TEXTDOMAIN"
@@ -16,7 +35,7 @@ input_string="
 Search     Buscar
 cat        gato
 dog        perro
-bird       paloma
+bird       ave
 fish       pez
 horse      caballo
 dinosaur   dinosaurio
@@ -42,7 +61,7 @@ echo "$po_content" | msgfmt -o /usr/share/locale/es/LC_MESSAGES/paketshorg.mo -
 
 # Nombre del archivo de la descarga
 p_html="$(dirname $0)/paketshorg.html"
-# echo "HTML $p_html"
+# echo "HTML $(realpath $p_html)"
 
 # wget --debug \
 headers="$(wget --server-response \
@@ -50,7 +69,7 @@ headers="$(wget --server-response \
 	--header='cookie: consent_notice_agree=true; distro_id=151' \
 	--content-on-error \
 	-O "$p_html" \
-	"https://pkgs.org/search/?q=$so_file" 2>&1)"
+	"https://pkgs.org/search/?q=$file_search" 2>&1)"
 
 # Extraer el valor del header Set-Cookie y guardarlo en una variable
 set_cookie="$(echo "$headers" | grep -i 'Set-Cookie:' | sed -n 's/^.*Set-Cookie: //p' | tr -d '\r')"
@@ -78,7 +97,7 @@ wget \
 	--header="cookie: $token1; $token2; consent_notice_agree=true; distro_id=151" \
 	--content-on-error \
 	-O "$p_html" \
-	"https://pkgs.org/search/?q=$so_file" 2>/dev/null
+	"https://pkgs.org/search/?q=$file_search" 2>/dev/null
 
 # Search string
 search="$(cat "$p_html" | grep -oP '(?<=badge badge-pill text-bg-danger">)[^<]+')"
@@ -117,7 +136,7 @@ wget \
 	--header="cookie: $token1; $token2; $token3; consent_notice_agree=true; distro_id=151" \
 	--content-on-error \
 	-O "$p_html" \
-	"https://pkgs.org/search/?q=$so_file" 2>/dev/null
+	"https://pkgs.org/search/?q=$file_search" 2>/dev/null
 
 accordion="$(
     cat "$p_html" 2>&1 | grep -Ev "</?header" | grep -Ev "</?nav|section|footer" \
@@ -139,71 +158,63 @@ done
 text_cards+=("$(printf "%s\n" "${card[@]}")")
 cards=()
 
-echo -e "\n Hay ${#text_cards[@]} sistemas Linux."
+ocard="\n Hay ${#text_cards[@]} sistemas Linux."
 for card in "${text_cards[@]}"; do
-    # echo "$card"
-    # echo ""
+    # ocard="$ocard\n$card"
+    # ocard="$ocard\n"
 
 	# Convertir contenido HTML a un array de líneas
 	IFS=$'\n' read -rd '' -a lines <<<"$card"
 
 	# Variables temporales para almacenar datos de la arquitectura actual
-	current_sistema=""
-	current_version=""
-	current_arch=""
-	current_official=""
-	current_target=""
-	packages=()
+	sys=""
+	version=""
+	arch=""
+	official=""
+	target=""
+	pkgs=()
 
 	# Iterar sobre cada línea del contenido HTML
 	for line in "${lines[@]}"; do
 		if [[ $line =~ class=\"card-header\ distro-([^\"]+)\" ]]; then
-			current_sistema=${BASH_REMATCH[1]}
-			current_target=$(echo "$line" | grep -oP 'data-bs-target="#tab-files-distro-\K[^"]+')
+			sys=${BASH_REMATCH[1]}
+			target=$(echo "$line" | grep -oP 'data-bs-target="#tab-files-distro-\K[^"]+')
 		elif [[ $line =~ \<a\ class=\"card-title\"\ href=\"#\"\>([^\<]+)\<\/a\> ]]; then
-			current_version=${BASH_REMATCH[1]}
+			version=${BASH_REMATCH[1]}
 		elif [[ $line =~ class=\"fw-bold\ ps-3\" ]]; then
-			if [[ -n $current_arch ]]; then
-				# Imprimir la información de la arquitectura anterior
-				echo -e "|\n+_ Version:"
-				echo "'$current_sistema' > '$current_version' > '$current_arch'"
-				echo "  $current_target $current_official"
-				for package in "${packages[@]}"; do
-					echo ""
-					echo "  ${package_urls[$package]}"
-					echo "  '${package_descriptions[$package]}'"
-					echo "    $package"
-				done
-			fi
+			# Mostrar el sistema anterior
+			ocard="$ocard$(show_sys sys version arch target official pkgs urls descs)"
+
 			# Reiniciar variables para la nueva arquitectura
-			current_arch="$(echo "$line" | awk -F'class="fw-bold ps-3" colspan="2">' '{print $2}' | sed -E 's/[[:space:]]+$//g')"
-			current_official=""
-			packages=()
-			declare -A package_urls
-			declare -A package_descriptions
+			arch="$(echo "$line" | awk -F'class="fw-bold ps-3" colspan="2">' '{print $2}' | sed -E 's/[[:space:]]+$//g')"
+			official=""
+			pkgs=()
+			declare -A urls
+			declare -A descs
 		elif [[ $line =~ \<span\ class=\"badge\ badge-pill\ text-bg-success\ align-top\ d-none\ d-md-inline-block\ ms-2\"\>([^\<]+)\<\/span\> ]]; then
-			current_official=${BASH_REMATCH[1]}
+			official=${BASH_REMATCH[1]}
 		elif [[ $line =~ href=\"([^\"]+)\" ]]; then
 			href=${BASH_REMATCH[1]}
 			innerHTML=$(echo "$line" | awk -F'<a href="[^"]+">' '{print $2}' | awk -F'</a>' '{print $1}')
-			packages+=("$innerHTML")
-			package_urls["$innerHTML"]="$href"
-		elif [[ $line =~ class=\"d-none\ d-md-table-cell\" ]]; then
-			description=$(echo "$line" | awk -F'class="d-none d-md-table-cell">' '{print $2}' | awk -F'</td>' '{print $1}')
-			package_descriptions["$innerHTML"]="$description"
+			pkgs+=("$innerHTML")
+			urls["$innerHTML"]="$href"
+		elif [[ $line =~ \"d-none\ d-md-table-cell\" ]]; then
+			descs["$innerHTML"]="$(
+				echo "$line" \
+				| awk -F'class="d-none d-md-table-cell">' '{print $2}' \
+				| awk -F'</td>' '{print $1}'
+			)"
 		fi
 	done
 
-	# Manejar la última arquitectura
-	if [[ -n $current_arch ]]; then
-		echo -e "|\n+_ Version:"
-		echo "'$current_sistema' > '$current_version' > '$current_arch'"
-		echo "  $current_target $current_official"
-		for package in "${packages[@]}"; do
-			echo ""
-			echo "  ${package_urls[$package]}"
-			echo "  '${package_descriptions[$package]}'"
-			echo "    $package"
-		done
-	fi
+	# Mostrar la última arquitectura
+	ocard="$ocard$(show_sys sys version arch target official pkgs urls descs)"
 done
+
+# Procesar todos los argumentos excepto el último
+ocard_filtered="$ocard"
+for ((i=1; i<$#; i++)); do
+    ocard_filtered="$(echo -n "$ocard_filtered" | grep -i "${!i}" )"
+done
+echo -e "$ocard_filtered"
+
