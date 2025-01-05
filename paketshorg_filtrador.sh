@@ -6,4 +6,4 @@ if [ "$#" -ne 4 ]; then
     exit 1
 fi
 
-paketshorg.sh "$4" | grep -i "$1" | grep -i "$2" | grep -i "$3"
+paketshorg.sh "$4" | grep -i "$1" | grep -i "$2" | grep -i "$3" | head -n1
