@@ -2,12 +2,19 @@
 
 # Verificar si se pasó un parámetro
 if [ $# -lt 1 ]; then
-    echo "Uso: $0 filtro1 filtro2 ... archivo.so (archivo a buscar)"
-    echo "Ejemplo: $0 cooker lib64 x86_64 libXext.so.6"
-    exit 1
+	echo "Uso: $0 filtro1 filtro2 ... -i1 archivo.so (archivo a buscar)
+El argumento -i1 es un número de línea una vez filtrada la salida.
+Por ejemplo, si es -i1, elige la línea 1, si es -i2, la línea 2.
+Esto sirve descargar los enlaces encontrados.
+	
+Ejemplos:
+	$0 libXext.so.6
+	$0 -i1 cooker lib64 x86_64 libXext.so.6
+"
+	exit 1
 fi
 
-function show_sys(){
+show_sys(){
 	# Mostrar el sistema
 	# sys version arch target official pkgs urls descs
 	if [[ -n $arch ]]; then
@@ -23,10 +30,15 @@ $pkg"
 		done
 	fi
 }
+random_color() {
+  COLORES=(31 32 33 34 35 36 37)  # Colores de primer plano
+  INDICE=$(( RANDOM % ${#COLORES[@]} ))
+  echo -e "\e[${COLORES[$INDICE]}m"
+}
 
 # Obtener el último elemento del array
-file_search="${@:-1}"
-# echo "$file_search"
+file_search="${@: -1}"
+# echo "file_search: $file_search"
 
 export TEXTDOMAIN="$(basename "$0" | sed 's/\.[^.]*$//')"
 # echo "$TEXTDOMAIN"
@@ -47,12 +59,12 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 '
 while IFS= read -r line; do
-    if [[ -z "$line" ]]; then
-        continue
-    fi
-    msgid="$(echo "$line" | awk '{print $1}')"
-    msgstr="$(echo "$line" | awk '{print $2}')"
-    po_content+="
+	if [[ -z "$line" ]]; then
+		continue
+	fi
+	msgid="$(echo "$line" | awk '{print $1}')"
+	msgstr="$(echo "$line" | awk '{print $2}')"
+	po_content+="
 msgid \"$msgid\"
 msgstr \"$msgstr\"
 "
@@ -63,12 +75,13 @@ echo "$po_content" | msgfmt -o /usr/share/locale/es/LC_MESSAGES/paketshorg.mo -
 p_html="$(dirname $0)/paketshorg.html"
 # echo "HTML $(realpath $p_html)"
 
+user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.63 Safari/537.36"
+
 # wget --debug \
-headers="$(wget --server-response \
-	--header='user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.63 Safari/537.36' \
-	--header='cookie: consent_notice_agree=true; distro_id=151' \
-	--content-on-error \
+headers="$(wget --server-response --content-on-error \
 	-O "$p_html" \
+	--header='user-agent: $user_agent' \
+	--header='cookie: consent_notice_agree=true; distro_id=151' \
 	"https://pkgs.org/search/?q=$file_search" 2>&1)"
 
 # Extraer el valor del header Set-Cookie y guardarlo en una variable
@@ -92,11 +105,10 @@ token2="$var2=$reversed_value"
 # echo "Token1: $token1"
 # echo "Token2: $token2"
 
-wget \
-	--header='user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.63 Safari/537.36' \
-	--header="cookie: $token1; $token2; consent_notice_agree=true; distro_id=151" \
-	--content-on-error \
+wget --content-on-error \
 	-O "$p_html" \
+	--header='user-agent: $user_agent' \
+	--header="cookie: $token1; $token2; consent_notice_agree=true; distro_id=151" \
 	"https://pkgs.org/search/?q=$file_search" 2>/dev/null
 
 # Search string
@@ -105,9 +117,10 @@ data_keys="$(grep -oP 'data-key="\K[^"]+' "$p_html" | tr -d '\n')"
 # echo "Data_keys: $data_keys"
 
 if [ -z "$search" ]; then
-    echo "Abriendo HTML"
-    xdg-open "$p_html"
-    exit 1
+	echo "HTML Guardado en '$p_html'"
+	echo "Saliendo..."
+	# xdg-open "$p_html"
+	# exit 1
 fi
 
 # Mostrar la cadena traducida
@@ -116,52 +129,52 @@ echo "$(gettext Search): $(gettext $search)"
 # Mostrar imágenes y seleccionar el captcha
 elegidos_texto="$($(dirname $0)/paketshorg.py "$p_html" "$search ($(gettext $search))")"
 elegidos="$( echo "$elegidos_texto" | sed "s/.* //g" )"
+# echo "Elegidos: $elegidos"
 keys=""
 # Iterar sobre cada dígito en la cadena de índices
 for (( i=0; i<${#elegidos}; i++ )); do
-    # Obtener el dígito actual y convertirlo a índice (restar 1 porque las posiciones en bash son base 0)
-    indice=$(( ${elegidos:$i:1} - 1 ))
-    
-    # Extraer el carácter en la posición del índice actual
-    keys+="${data_keys:$indice:1}"
+	# Obtener el dígito actual y convertirlo a índice
+	indice="$((${elegidos:$i:1}))"
+
+	# Extraer el carácter en la posición del índice actual
+	keys+="${data_keys:$indice:1}"
 done
 
 # Mostrar elegidos
 token3="$var3=$keys"
-# echo "$elegidos_texto"
+# echo "Elegidos: $elegidos"
 # echo "Keys: $keys"
 # echo "Token3: $token3"
-wget \
-	--header='user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.63 Safari/537.36' \
-	--header="cookie: $token1; $token2; $token3; consent_notice_agree=true; distro_id=151" \
-	--content-on-error \
+wget --content-on-error \
 	-O "$p_html" \
+	--header='user-agent: $user_agent' \
+	--header="cookie: $token1; $token2; $token3; consent_notice_agree=true; distro_id=151" \
 	"https://pkgs.org/search/?q=$file_search" 2>/dev/null
 
 accordion="$(
-    cat "$p_html" 2>&1 | grep -Ev "</?header" | grep -Ev "</?nav|section|footer" \
-    | xmllint --html --xpath '//*[@id="tab-files-accordion"]' - 2>/dev/null
+	cat "$p_html" 2>&1 | grep -Ev "</?header" | grep -Ev "</?nav|section|footer" \
+	| xmllint --html --xpath '//*[@id="tab-files-accordion"]' - 2>/dev/null
 )"
 
 card_exists=0
 IFS=$'\n' read -rd '' -a lines <<<"$accordion"
 for line in "${lines[@]}"; do
-    if echo "$line" | grep -q '<div class="card"'; then
+	if echo "$line" | grep -q '<div class="card"'; then
 		card_exists=1
-        text_cards+=("$(printf "%s\n" "${card[@]}")")
-        card=()
-    fi
-    if [[ "$card_exists" == 1 ]];then
+		text_cards+=("$(printf "%s\n" "${card[@]}")")
+		card=()
+	fi
+	if [[ "$card_exists" == 1 ]];then
 		card+=("$line")
-    fi
+	fi
 done
 text_cards+=("$(printf "%s\n" "${card[@]}")")
 cards=()
 
 ocard="\n Hay ${#text_cards[@]} sistemas Linux."
 for card in "${text_cards[@]}"; do
-    # ocard="$ocard\n$card"
-    # ocard="$ocard\n"
+	# ocard="$ocard\n$card"
+	# ocard="$ocard\n"
 
 	# Convertir contenido HTML a un array de líneas
 	IFS=$'\n' read -rd '' -a lines <<<"$card"
@@ -178,7 +191,7 @@ for card in "${text_cards[@]}"; do
 	for line in "${lines[@]}"; do
 		if [[ $line =~ class=\"card-header\ distro-([^\"]+)\" ]]; then
 			sys=${BASH_REMATCH[1]}
-			target=$(echo "$line" | grep -oP 'data-bs-target="#tab-files-distro-\K[^"]+')
+			target="$(echo "$line" | grep -oP 'data-bs-target="#tab-files-distro-\K[^"]+')"
 		elif [[ $line =~ \<a\ class=\"card-title\"\ href=\"#\"\>([^\<]+)\<\/a\> ]]; then
 			version=${BASH_REMATCH[1]}
 		elif [[ $line =~ class=\"fw-bold\ ps-3\" ]]; then
@@ -211,10 +224,30 @@ for card in "${text_cards[@]}"; do
 	ocard="$ocard$(show_sys sys version arch target official pkgs urls descs)"
 done
 
-# Procesar todos los argumentos excepto el último
+#echo -e "$ocard"
+
+# Filtrados con grep
 ocard_filtered="$ocard"
 for ((i=1; i<$#; i++)); do
-    ocard_filtered="$(echo -n "$ocard_filtered" | grep -i "${!i}" )"
+	if [[ ! "${!i}" =~ ^-i[0-9_]+$ ]]; then
+		ocard_filtered="$(echo -n "$ocard_filtered" | grep -i "${!i}" )"
+		color_aleatorio="$(obtener_color_aleatorio)"
+		# echo -e "$random_color -- ${!i} --
+# $ocard_filtered
+# \e[0m"
+	fi
 done
-echo -e "$ocard_filtered"
+# echo "Filtrado: $ocard_filtered"
 
+# Filtrado de número de línea
+for arg in "$@"; do
+	if [[ "$arg" =~ ^-i([0-9]+)$ ]]; then
+		i="$( echo "$arg" | sed 's/^-i0*//' )"
+		if [[ -z "$i" ]]; then
+			i=0
+		fi
+		line="$( echo -e "$ocard_filtered" | head -n$i | tail -n1 )"
+	fi
+done
+
+echo "$line"

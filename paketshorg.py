@@ -29,7 +29,7 @@ def show_images(base64_images, title):
 
     # Tamaño de la ventana
     window_width = 400
-    window_height = 470
+    window_height = 425
 
     # Obtener el tamaño de la pantalla
     screen_width = root.winfo_screenwidth()
@@ -44,7 +44,7 @@ def show_images(base64_images, title):
 
     # Crear un frame para el título
     title_frame = ttk.Frame(root)
-    title_frame.pack(fill="x", pady=10)
+    title_frame.pack(fill="x", pady=0)
     title_label = ttk.Label(title_frame, text=title, font=("Monospace", 16))
     title_label.pack()
 
@@ -98,7 +98,7 @@ def show_images(base64_images, title):
             label = ttk.Label(image_frame, image=photo)
             label.image = photo
             label.grid(row=i // columns, column=i % columns, padx=0, pady=0, sticky="nsew")
-            label.bind("<Button-1>", lambda e, lbl=label, orig=photo, over=overlay_photo, idx=i + 1: on_image_click(lbl, orig, over, idx))
+            label.bind("<Button-1>", lambda e, lbl=label, orig=photo, over=overlay_photo, idx=i: on_image_click(lbl, orig, over, idx))
         except (base64.binascii.Error, UnidentifiedImageError) as e:
             print(f"Error al decodificar o abrir la imagen {i + 1}: {e}")
 
@@ -114,7 +114,7 @@ def show_images(base64_images, title):
 
 def main():
     if len(sys.argv) != 3:
-        print("Uso: python script.py ruta/al/archivo.html 'Título del Programa'")
+        print("Uso: python script.py archivo.html 'Título del Programa'")
         return
 
     html_path = sys.argv[1]
